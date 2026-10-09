@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Admins Collection:
+    // Contains documents for workspace administrators (e.g. email, role: "Admin", status: "Active")
+    // Authenticated users must be able to read this collection to verify their admin status.
+    match /admins/{adminId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Users Collection:
+    // Contains registered workspace user profiles and their assigned roles
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Activity Logs Collection:
+    match /activity_logs/{logId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Projects and other lab data:
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
