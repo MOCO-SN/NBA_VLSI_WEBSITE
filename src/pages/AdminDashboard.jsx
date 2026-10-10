@@ -16,11 +16,10 @@ import {
   Mail,
   Send,
   Inbox,
-  MessageSquare,
   Check,
-  Cloud
+  Server
 } from "lucide-react";
-import CloudinarySettingsModal from "../components/CloudinarySettingsModal";
+import ProxyStatusModal from "../components/ProxyStatusModal";
 import {
   getRegisteredUsers,
   fetchUsersFromFirestore,
@@ -46,6 +45,7 @@ export default function AdminDashboard({ user }) {
   const [users, setUsers] = useState(getRegisteredUsers);
   const [logs, setLogs] = useState(getActivityLogs);
   const [contacts, setContacts] = useState(getContactMessages);
+  const [showProxyModal, setShowProxyModal] = useState(false);
 
   // Sync users and contacts live from Firestore on mount
   useEffect(() => {
@@ -268,7 +268,7 @@ export default function AdminDashboard({ user }) {
         </div>
 
         {/* Tab Switcher */}
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        <div className="admin-tab-switcher">
           <button
             onClick={() => setActiveTab("users")}
             className={`primary-button compact ${activeTab === "users" ? "" : "outline-button"}`}
@@ -303,11 +303,20 @@ export default function AdminDashboard({ user }) {
           >
             <Activity size={16} /> Activity Logs ({logs.length})
           </button>
+          <button
+            type="button"
+            onClick={() => setShowProxyModal(true)}
+            className="outline-button compact"
+            style={{ background: "#fff", color: "var(--navy)", borderColor: "var(--border)" }}
+            title="Inspect Wasmer proxy server and cloud storage status"
+          >
+            <Server size={15} color="var(--blue)" /> Proxy & Cloud
+          </button>
         </div>
       </div>
 
       {/* Stats Bar */}
-      <div className="stat-grid" style={{ marginBottom: "22px" }}>
+      <div className="admin-stat-grid">
         <div className="stat-card">
           <div className="stat-icon" style={{ background: "#e0f2fe", color: "#0284c7" }}>
             <Users size={19} />
@@ -430,9 +439,9 @@ export default function AdminDashboard({ user }) {
             </div>
           </div>
 
-          {/* User Table */}
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+          {/* User Table (Desktop Layout) */}
+          <div className="admin-table-wrap admin-table-desktop">
+            <table className="admin-table" style={{ width: "100%", minWidth: "780px", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "10px", letterSpacing: "0.5px" }}>
                   <th style={{ padding: "12px 10px" }}>USER</th>
@@ -638,6 +647,163 @@ export default function AdminDashboard({ user }) {
               </tbody>
             </table>
           </div>
+
+          {/* User Cards (Mobile & Tablet Layout) */}
+          <div className="admin-user-mobile-cards">
+            {filteredUsers.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "30px", color: "var(--muted)" }}>
+                No users found matching your search.
+              </div>
+            ) : (
+              filteredUsers.map((u) => {
+                const currentDraftRole = roleDrafts[u.id] || u.role || "Developer";
+                const hasDraftChange = currentDraftRole !== u.role;
+                const initials = (u.name || "User")
+                  .split(" ")
+                  .map((x) => x[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase();
+
+                return (
+                  <div
+                    key={u.id}
+                    className={`admin-user-card ${!u.role ? "unassigned" : hasDraftChange ? "has-draft" : ""}`}
+                  >
+                    {/* Header: Avatar, Name, Email, Role */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        {u.avatar ? (
+                          <img
+                            src={u.avatar}
+                            alt={u.name}
+                            style={{ width: "38px", height: "38px", borderRadius: "10px", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <div className="avatar small" style={{ width: "38px", height: "38px", borderRadius: "10px" }}>
+                            {initials}
+                          </div>
+                        )}
+                        <div>
+                          <strong style={{ fontSize: "13px", color: "var(--text)", display: "block" }}>{u.name}</strong>
+                          <span style={{ fontSize: "11px", color: "var(--muted)", wordBreak: "break-all" }}>{u.email}</span>
+                        </div>
+                      </div>
+
+                      {/* Current Role Pill */}
+                      {u.role ? (
+                        <span
+                          style={{
+                            padding: "3px 8px",
+                            borderRadius: "14px",
+                            fontSize: "10px",
+                            fontWeight: "700",
+                            background: u.role === "Admin" ? "#fee2e2" : u.role === "Robotics Lead" ? "#ede9fe" : u.role === "Hardware Engineer" ? "#e0f2fe" : "#dcfce7",
+                            color: u.role === "Admin" ? "#b91c1c" : u.role === "Robotics Lead" ? "#6d28d9" : u.role === "Hardware Engineer" ? "#0369a1" : "#15803d",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          {u.role}
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            padding: "3px 8px",
+                            borderRadius: "14px",
+                            fontSize: "9px",
+                            fontWeight: "700",
+                            background: "#fef3c7",
+                            color: "#b45309",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          ⚠️ Blocked
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Meta: Status & Requested Role */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", background: "var(--soft)", padding: "8px 10px", borderRadius: "8px" }}>
+                      <div>
+                        <span style={{ color: "var(--muted)" }}>Status: </span>
+                        <strong style={{ color: !u.role ? "#b45309" : u.status === "Active" ? "#16a34a" : "#dc2626" }}>
+                          ● {!u.role ? "Pending Approval" : u.status || "Active"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--muted)" }}>Requested: </span>
+                        <strong>{u.requestedRole || "Developer"}</strong>
+                      </div>
+                    </div>
+
+                    {/* Role Assignment Dropdown + Commit Button */}
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <select
+                        value={currentDraftRole}
+                        onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                        style={{
+                          flex: 1,
+                          height: "36px",
+                          padding: "0 10px",
+                          borderRadius: "8px",
+                          border: hasDraftChange ? "1px solid #16a34a" : "1px solid var(--border)",
+                          background: "var(--card)",
+                          fontSize: "12px",
+                          color: "var(--text)"
+                        }}
+                      >
+                        {AVAILABLE_ROLES.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+
+                      {hasDraftChange && (
+                        <button
+                          className="primary-button compact"
+                          style={{ height: "36px", padding: "0 14px", fontSize: "11px", background: "#16a34a" }}
+                          onClick={() => handleAssignRole(u)}
+                        >
+                          Assign
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Actions: Toggle Status & Delete */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", paddingTop: "4px" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(u.id)}
+                        className="outline-button compact"
+                        style={{ height: "34px", fontSize: "11px", justifyContent: "center" }}
+                      >
+                        {u.status === "Active" ? <ToggleRight size={14} color="#16a34a" /> : <ToggleLeft size={14} color="#dc2626" />}
+                        {u.status === "Active" ? "Suspend Account" : "Activate Account"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(u)}
+                        style={{
+                          height: "34px",
+                          padding: "0 12px",
+                          border: "1px solid #fee2e2",
+                          background: "#fef2f2",
+                          borderRadius: "8px",
+                          color: "#dc2626",
+                          cursor: "pointer",
+                          display: "grid",
+                          placeItems: "center"
+                        }}
+                        title="Remove user"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </section>
       )}
 
@@ -809,8 +975,8 @@ export default function AdminDashboard({ user }) {
               marginBottom: "20px"
             }}
           >
-            <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: "1 1 320px", maxWidth: "600px" }}>
-              <div className="input-box" style={{ flex: 1, height: "40px" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: "1 1 320px", maxWidth: "600px", flexWrap: "wrap" }}>
+              <div className="search-box" style={{ flex: "1 1 200px", height: "40px" }}>
                 <Search size={16} />
                 <input
                   value={contactSearch}
@@ -991,7 +1157,7 @@ export default function AdminDashboard({ user }) {
                     >
                       <div style={{ display: "flex", gap: "8px" }}>
                         <a
-                          href={`mailto:${c.email}?subject=RE: NBA VLSI Lab Inquiry&body=Hi ${encodeURIComponent(c.name)},%0D%0A%0D%0AThank you for reaching out to the NBA VLSI & Robotics Lab regarding your inquiry.%0D%0A%0D%0A`}
+                          href={`mailto:${c.email}?subject=RE: Development Club Inquiry&body=Hi ${encodeURIComponent(c.name)},%0D%0A%0D%0AThank you for reaching out to the Development Club regarding your inquiry.%0D%0A%0D%0A`}
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
@@ -1058,6 +1224,12 @@ export default function AdminDashboard({ user }) {
           )}
         </section>
       )}
+
+      {/* ── Proxy & Cloud Infrastructure Diagnostics Modal ── */}
+      <ProxyStatusModal
+        isOpen={showProxyModal}
+        onClose={() => setShowProxyModal(false)}
+      />
     </>
   );
 }

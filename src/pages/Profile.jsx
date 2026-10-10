@@ -7,14 +7,12 @@ import {
   Camera,
   Cpu,
   Wrench,
-  Globe,
   Phone,
   Plus,
   X,
   Tag,
   CheckCircle2,
   Sparkles,
-  ExternalLink,
   Cloud,
   Loader2
 } from "lucide-react";
@@ -23,8 +21,7 @@ import { auth, db, firebaseEnabled } from "../firebase";
 import { updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { getRegisteredUsers, saveRegisteredUser } from "../utils/userDirectory";
-import { uploadImageToCloud, getCloudinaryConfig } from "../utils/cloudinary";
-import CloudinarySettingsModal from "../components/CloudinarySettingsModal";
+import { uploadImageToCloud } from "../utils/cloudinary";
 
 const INTEREST_SUGGESTIONS = [
   "FPGA Synthesis",
@@ -126,7 +123,6 @@ export default function Profile({ user, onUpdateUser }) {
       ? "Firebase Storage"
       : "";
   });
-  const [showCloudModal, setShowCloudModal] = useState(false);
 
   // ── Tag Handlers ──
   function addInterest(val) {
@@ -179,7 +175,19 @@ export default function Profile({ user, onUpdateUser }) {
 
       // Persist to Firebase Auth & Firestore immediately if authenticated
       if (firebaseEnabled && auth?.currentUser) {
-        await updateProfile(auth.currentUser, { photoURL: cloudUrl }).catch(() => {});
+        const isSafeAuthUrl = Boolean(
+          cloudUrl &&
+          typeof cloudUrl === "string" &&
+          (cloudUrl.startsWith("http://") || cloudUrl.startsWith("https://")) &&
+          cloudUrl.length <= 2048
+        );
+        if (isSafeAuthUrl) {
+          try {
+            await updateProfile(auth.currentUser, { photoURL: cloudUrl });
+          } catch (authErr) {
+            console.warn("Could not update auth photoURL:", authErr);
+          }
+        }
         if (db && user?.uid) {
           await setDoc(doc(db, "users", user.uid), { photoURL: cloudUrl }, { merge: true }).catch(() => {});
         }
@@ -224,10 +232,21 @@ export default function Profile({ user, onUpdateUser }) {
     setBusy(true);
     try {
       if (firebaseEnabled && auth?.currentUser) {
-        await updateProfile(auth.currentUser, {
-          displayName: name.trim(),
-          ...(avatar ? { photoURL: avatar } : {})
-        });
+        const isSafeAuthUrl = Boolean(
+          avatar &&
+          typeof avatar === "string" &&
+          (avatar.startsWith("http://") || avatar.startsWith("https://")) &&
+          avatar.length <= 2048
+        );
+
+        try {
+          await updateProfile(auth.currentUser, {
+            displayName: name.trim(),
+            ...(isSafeAuthUrl ? { photoURL: avatar } : {})
+          });
+        } catch (authErr) {
+          console.warn("Could not update auth profile:", authErr);
+        }
 
         if (db && user?.uid) {
           await setDoc(
@@ -395,17 +414,6 @@ export default function Profile({ user, onUpdateUser }) {
               >
                 {uploadingPhoto ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
                 {uploadingPhoto ? "Uploading to Cloud..." : "Change Photo"}
-              </button>
-
-              <button
-                className="outline-button"
-                type="button"
-                style={{ height: "30px", fontSize: "11px", padding: "0 10px", color: "var(--blue)" }}
-                onClick={() => setShowCloudModal(true)}
-                title="Configure Cloudinary settings"
-              >
-                <Cloud size={13} />
-                Cloud Storage Settings
               </button>
             </div>
             {cloudProviderUsed && (
@@ -735,12 +743,6 @@ export default function Profile({ user, onUpdateUser }) {
           </button>
         </div>
       </section>
-
-      {/* ── Cloudinary Settings Modal ── */}
-      <CloudinarySettingsModal
-        isOpen={showCloudModal}
-        onClose={() => setShowCloudModal(false)}
-      />
     </>
   );
 }

@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Save,
   Globe,
   ExternalLink,
   Plus,
@@ -14,14 +13,15 @@ import {
   X,
   Edit3,
   Link2,
-  Tag
+  Camera,
+  Loader2,
+  Cloud
 } from "lucide-react";
 import { Github } from "../components/SocialIcons";
 import { db, firebaseEnabled } from "../firebase";
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   setDoc,
   deleteDoc,
@@ -29,6 +29,7 @@ import {
   where,
   serverTimestamp
 } from "firebase/firestore";
+import { uploadImageToCloud } from "../utils/cloudinary";
 
 // ── Local storage helpers ─────────────────────────────────────────────────────
 const PROJ_LIST_KEY = (uid) => `mocosn_projects_list_${uid || "guest"}`;
@@ -58,7 +59,8 @@ const emptyForm = {
   website: "",
   github: "",
   technologies: "",
-  status: "Development"
+  status: "Development",
+  imageUrl: ""
 };
 
 // ── Colour generator for project avatars ─────────────────────────────────────
@@ -89,7 +91,6 @@ export default function Project({ user }) {
   const [saveMsgType, setSaveMsgType] = useState("success");
   const [search, setSearch]     = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const fileRef = useRef(null);
 
   // ── Load from Firestore on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -169,6 +170,36 @@ export default function Project({ user }) {
     }
   }
 
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const projectImgInputRef = useRef(null);
+
+  async function handleProjectImageUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select a valid image file (PNG, JPG, WEBP).");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Please select an image smaller than 10MB.");
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const res = await uploadImageToCloud(file, { folder: "nba_vlsi/projects" });
+      updateForm("imageUrl", res.url);
+      flash(`Project image uploaded to cloud (${res.provider === "cloudinary" ? "Cloudinary" : "Firebase"})!`);
+    } catch (err) {
+      alert(`Could not upload project image: ${err.message}`);
+    } finally {
+      setUploadingImage(false);
+      if (projectImgInputRef.current) projectImgInputRef.current.value = "";
+    }
+  }
+
   // ── Edit a project ────────────────────────────────────────────────────────
   function startEdit(proj) {
     setEditingId(proj.id);
@@ -178,7 +209,8 @@ export default function Project({ user }) {
       website:      proj.website      || "",
       github:       proj.github       || "",
       technologies: proj.technologies || "",
-      status:       proj.status       || "Development"
+      status:       proj.status       || "Development",
+      imageUrl:     proj.imageUrl     || ""
     });
     setSelected(null);
   }
@@ -323,14 +355,29 @@ export default function Project({ user }) {
                   >
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
                       {/* Avatar */}
-                      <div style={{
-                        width: "44px", height: "44px", borderRadius: "12px", flexShrink: 0,
-                        background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
-                        color: "#fff", display: "grid", placeItems: "center",
-                        fontSize: "18px", fontWeight: "800"
-                      }}>
-                        {(proj.name || "P")[0].toUpperCase()}
-                      </div>
+                      {proj.imageUrl ? (
+                        <img
+                          src={proj.imageUrl}
+                          alt={proj.name}
+                          style={{
+                            width: "44px",
+                            height: "44px",
+                            borderRadius: "12px",
+                            objectFit: "cover",
+                            flexShrink: 0,
+                            border: "1px solid var(--border)"
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: "44px", height: "44px", borderRadius: "12px", flexShrink: 0,
+                          background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
+                          color: "#fff", display: "grid", placeItems: "center",
+                          fontSize: "18px", fontWeight: "800"
+                        }}>
+                          {(proj.name || "P")[0].toUpperCase()}
+                        </div>
+                      )}
 
                       {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -430,14 +477,29 @@ export default function Project({ user }) {
                   const statusStyle = STATUS_STYLES[selectedProj.status] || STATUS_STYLES.Development;
                   return (
                     <>
-                      <div style={{
-                        width: "56px", height: "56px", borderRadius: "14px", flexShrink: 0,
-                        background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
-                        color: "#fff", display: "grid", placeItems: "center",
-                        fontSize: "22px", fontWeight: "800"
-                      }}>
-                        {(selectedProj.name || "P")[0].toUpperCase()}
-                      </div>
+                      {selectedProj.imageUrl ? (
+                        <img
+                          src={selectedProj.imageUrl}
+                          alt={selectedProj.name}
+                          style={{
+                            width: "56px",
+                            height: "56px",
+                            borderRadius: "14px",
+                            objectFit: "cover",
+                            flexShrink: 0,
+                            border: "1px solid var(--border)"
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: "56px", height: "56px", borderRadius: "14px", flexShrink: 0,
+                          background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
+                          color: "#fff", display: "grid", placeItems: "center",
+                          fontSize: "22px", fontWeight: "800"
+                        }}>
+                          {(selectedProj.name || "P")[0].toUpperCase()}
+                        </div>
+                      )}
                       <div style={{ flex: 1 }}>
                         <h2 style={{ fontSize: "18px", marginBottom: "6px" }}>{selectedProj.name}</h2>
                         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
@@ -473,6 +535,24 @@ export default function Project({ user }) {
                   );
                 })()}
               </div>
+
+              {/* Cover Banner if present */}
+              {selectedProj.imageUrl && (
+                <div style={{
+                  width: "100%",
+                  height: "190px",
+                  borderRadius: "12px",
+                  overflow: "hidden",
+                  marginBottom: "18px",
+                  border: "1px solid var(--border)"
+                }}>
+                  <img
+                    src={selectedProj.imageUrl}
+                    alt={selectedProj.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                </div>
+              )}
 
               {/* Description */}
               {selectedProj.description && (
@@ -624,6 +704,86 @@ export default function Project({ user }) {
                     placeholder="e.g. ROS 2, STM32, CANopen, FreeRTOS (comma-separated)"
                   />
                 </label>
+
+                {/* Project Cover Image (Cloudinary) */}
+                <div className="field">
+                  <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                    <Camera size={11} /> Project Cover / Media (Cloudinary)
+                  </span>
+                  <input
+                    ref={projectImgInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={handleProjectImageUpload}
+                  />
+                  {form.imageUrl ? (
+                    <div style={{
+                      position: "relative",
+                      borderRadius: "10px",
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                      marginTop: "4px"
+                    }}>
+                      <img
+                        src={form.imageUrl}
+                        alt="Project Cover"
+                        style={{ width: "100%", height: "130px", objectFit: "cover", display: "block" }}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        bottom: "8px",
+                        right: "8px",
+                        display: "flex",
+                        gap: "6px"
+                      }}>
+                        <button
+                          type="button"
+                          className="outline-button compact"
+                          style={{ background: "rgba(255,255,255,0.9)", fontSize: "11px", height: "26px" }}
+                          onClick={() => projectImgInputRef.current?.click()}
+                          disabled={uploadingImage}
+                        >
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          className="outline-button compact"
+                          style={{ background: "rgba(254,242,242,0.9)", color: "#dc2626", borderColor: "#fecaca", fontSize: "11px", height: "26px" }}
+                          onClick={() => updateForm("imageUrl", "")}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => !uploadingImage && projectImgInputRef.current?.click()}
+                      style={{
+                        border: "2px dashed var(--border)",
+                        borderRadius: "10px",
+                        padding: "16px",
+                        textAlign: "center",
+                        cursor: uploadingImage ? "default" : "pointer",
+                        background: "var(--soft)",
+                        marginTop: "4px"
+                      }}
+                    >
+                      {uploadingImage ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: "var(--blue)" }}>
+                          <Loader2 size={16} className="animate-spin" />
+                          <span style={{ fontSize: "12px", fontWeight: 600 }}>Uploading to Cloudinary...</span>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                          <Cloud size={20} color="var(--blue)" />
+                          <strong style={{ fontSize: "12px", color: "var(--text)" }}>Upload Cover Image</strong>
+                          <span style={{ fontSize: "11px", color: "var(--muted)" }}>Image stored into the cloud (PNG, JPG, WEBP)</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Links */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>

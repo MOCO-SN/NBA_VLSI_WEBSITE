@@ -202,15 +202,62 @@ function SettingSection({ icon: Icon, title, description, children }) {
 
 function ToggleRow({ title, text, checked, onToggle }) {
   return (
-    <div className="setting-row">
-      <div><strong>{title}</strong><span>{text}</span></div>
+    <div
+      className="setting-row"
+      style={{
+        cursor: "pointer",
+        userSelect: "none",
+        padding: "14px 0",
+        transition: "background 0.15s ease"
+      }}
+      onClick={onToggle}
+    >
+      <div style={{ flex: 1, paddingRight: "16px" }}>
+        <strong style={{ fontSize: "13px", fontWeight: "600", color: "var(--text)", display: "block" }}>
+          {title}
+        </strong>
+        <span style={{ fontSize: "11px", color: "var(--muted)", marginTop: "3px", display: "block", lineHeight: "1.4" }}>
+          {text}
+        </span>
+      </div>
       <button
         type="button"
+        role="switch"
+        aria-checked={checked}
         className={`toggle ${checked ? "on" : ""}`}
-        onClick={onToggle}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
         aria-label={`Toggle ${title}`}
+        style={{
+          width: "46px",
+          height: "26px",
+          borderRadius: "20px",
+          border: 0,
+          background: checked ? "var(--blue)" : "#cbd5e1",
+          cursor: "pointer",
+          padding: "3px",
+          transition: "background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+          display: "inline-flex",
+          alignItems: "center",
+          flexShrink: 0,
+          outline: "none",
+          boxShadow: checked ? "0 2px 8px rgba(26,127,212,0.25)" : "inset 0 1px 2px rgba(0,0,0,0.06)"
+        }}
       >
-        <span />
+        <span
+          style={{
+            display: "block",
+            width: "20px",
+            height: "20px",
+            borderRadius: "50%",
+            background: "#ffffff",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+            transform: checked ? "translateX(20px)" : "translateX(0px)",
+            transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+          }}
+        />
       </button>
     </div>
   );

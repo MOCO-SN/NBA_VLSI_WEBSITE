@@ -316,7 +316,7 @@ export default function Login({ onDemoLogin, onAuthSuccess, onBack }) {
         >
           <Cpu size={26} color={theme.primary} />
           <span style={{ fontSize: "1.2rem", fontWeight: 700, color: theme.primary, letterSpacing: "-0.5px" }}>
-            NBA VLSI
+            DEVELOPMENT CLUB
           </span>
         </a>
 
@@ -395,7 +395,7 @@ export default function Login({ onDemoLogin, onAuthSuccess, onBack }) {
               marginBottom: "24px",
               width: "fit-content"
             }}>
-              <span>●</span> NBA ACCREDITED · ADVANCED RESEARCH
+              <span>●</span> DEVELOPMENT CLUB · ADVANCED RESEARCH
             </div>
 
             <h1 style={{
@@ -895,7 +895,7 @@ export default function Login({ onDemoLogin, onAuthSuccess, onBack }) {
         fontSize: "12px",
         color: theme.textSecondary
       }}>
-        © 2026 NBA VLSI & Robotics Lab · All Rights Reserved
+        © 2026 Development Club & Robotics Lab · All Rights Reserved
       </footer>
     </div>
   );

@@ -872,26 +872,33 @@ h1 {
   background: #fff;
 }
 .toggle {
-  width: 40px;
-  height: 22px;
+  width: 46px;
+  height: 26px;
   border: 0;
-  background: #dbe2e9;
+  background: #cbd5e1;
   border-radius: 20px;
   padding: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .toggle span {
   display: block;
-  width: 16px;
-  height: 16px;
-  background: white;
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
   border-radius: 50%;
-  transition: 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .toggle.on {
-  background: var(--navy);
+  background: var(--blue);
+  box-shadow: 0 2px 8px rgba(26, 127, 212, 0.25);
 }
 .toggle.on span {
-  transform: translateX(18px);
+  transform: translateX(20px);
 }
 .danger-panel {
   border: 1px solid #f2d0d0;
@@ -1866,8 +1873,78 @@ html[data-theme="dark"] .checkin-badge.in  { background: rgba(0,170,220,.2); col
 html[data-theme="dark"] .checkin-badge.out { background: rgba(200,140,40,.2); color: #ffc875; }
 
 /* ==========================================================================
-   MULTI-DEVICE RESPONSIVENESS: TABLET (<900px) & PHONE (<580px)
+   MULTI-DEVICE RESPONSIVENESS: ADMIN CONSOLE & ATTENDANCE SYSTEM
    ========================================================================== */
+.admin-tab-switcher {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-tab-switcher button {
+  white-space: nowrap;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.admin-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 12px;
+}
+
+.admin-table-wrap::-webkit-scrollbar,
+.att-table-wrap::-webkit-scrollbar {
+  height: 6px;
+}
+.admin-table-wrap::-webkit-scrollbar-track,
+.att-table-wrap::-webkit-scrollbar-track {
+  background: var(--soft);
+  border-radius: 4px;
+}
+.admin-table-wrap::-webkit-scrollbar-thumb,
+.att-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+/* User Card List for Mobile & Tablet */
+.admin-user-mobile-cards {
+  display: none;
+}
+
+.admin-user-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.admin-user-card.has-draft {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.02);
+}
+
+.admin-user-card.unassigned {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.03);
+}
+
 @media (max-width: 900px) {
   .projects-split,
   .attendance-split {
@@ -1884,6 +1961,80 @@ html[data-theme="dark"] .checkin-badge.out { background: rgba(200,140,40,.2); co
   .att-tab {
     flex: 1;
     text-align: center;
+  }
+  .admin-tab-switcher {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .admin-tab-switcher button {
+    width: 100%;
+    justify-content: center;
+    font-size: 11px !important;
+    padding: 8px 10px !important;
+  }
+  .admin-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Switch table to card list on mobile and narrow tablets */
+  .admin-table-desktop {
+    display: none !important;
+  }
+  .admin-user-mobile-cards {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .panel-title {
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .month-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .admin-tab-switcher {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .admin-tab-switcher button {
+    font-size: 11px !important;
+    padding: 7px 8px !important;
+    min-height: 38px;
+  }
+  .admin-stat-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .admin-stat-grid .stat-card {
+    padding: 12px 14px !important;
+    min-height: 80px !important;
+  }
+  .admin-stat-grid .stat-card strong {
+    font-size: 18px !important;
+  }
+  .admin-stat-grid .stat-card span {
+    font-size: 9px !important;
+    letter-spacing: 0.4px !important;
+  }
+  .admin-stat-grid .stat-card:last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-tab-switcher button {
+    font-size: 10.5px !important;
+    padding: 6px 6px !important;
   }
 }
 

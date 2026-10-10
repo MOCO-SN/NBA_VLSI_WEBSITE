@@ -1,102 +1,35 @@
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage, firebaseEnabled } from "../firebase";
-
-const STORAGE_KEY_CLOUD_NAME = "mocosn_cloudinary_cloud_name";
-const STORAGE_KEY_UPLOAD_PRESET = "mocosn_cloudinary_upload_preset";
-const STORAGE_KEY_FOLDER = "mocosn_cloudinary_folder";
+import {
+  uploadImageViaProxy,
+  fetchCloudinaryConfigFromProxy
+} from "./proxyClient";
 
 /**
- * Get the current Cloudinary configuration from localStorage or Vite environment variables.
+ * Helper to convert File/Blob to base64 Data URL for server proxy upload
  */
-export function getCloudinaryConfig() {
-  const envCloudName = import.meta.env?.VITE_CLOUDINARY_CLOUD_NAME || "";
-  const envUploadPreset = import.meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET || "";
-
-  let localCloudName = "";
-  let localUploadPreset = "";
-  let localFolder = "nba_vlsi";
-
-  try {
-    localCloudName = localStorage.getItem(STORAGE_KEY_CLOUD_NAME) || "";
-    localUploadPreset = localStorage.getItem(STORAGE_KEY_UPLOAD_PRESET) || "";
-    localFolder = localStorage.getItem(STORAGE_KEY_FOLDER) || "nba_vlsi";
-  } catch (err) {
-    console.warn("Could not read Cloudinary configuration from localStorage:", err);
-  }
-
-  const cloudName = (localCloudName || envCloudName || "").trim();
-  const uploadPreset = (localUploadPreset || envUploadPreset || "").trim();
-  const folder = (localFolder || "nba_vlsi").trim();
-
-  return {
-    cloudName,
-    uploadPreset,
-    folder,
-    isConfigured: Boolean(cloudName && uploadPreset),
-    source: localCloudName ? "localStorage" : envCloudName ? "env" : "none"
-  };
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    if (typeof file === "string") return resolve(file);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
- * Save custom Cloudinary settings to localStorage.
- */
-export function saveCloudinaryConfig({ cloudName, uploadPreset, folder = "nba_vlsi" }) {
-  try {
-    if (cloudName !== undefined) {
-      if (cloudName) {
-        localStorage.setItem(STORAGE_KEY_CLOUD_NAME, cloudName.trim());
-      } else {
-        localStorage.removeItem(STORAGE_KEY_CLOUD_NAME);
-      }
-    }
-
-    if (uploadPreset !== undefined) {
-      if (uploadPreset) {
-        localStorage.setItem(STORAGE_KEY_UPLOAD_PRESET, uploadPreset.trim());
-      } else {
-        localStorage.removeItem(STORAGE_KEY_UPLOAD_PRESET);
-      }
-    }
-
-    if (folder !== undefined) {
-      localStorage.setItem(STORAGE_KEY_FOLDER, (folder || "nba_vlsi").trim());
-    }
-
-    // Dispatch event so active components re-sync immediately
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("cloudinary-config-updated", {
-        detail: { cloudName, uploadPreset, folder }
-      }));
-    }
-  } catch (err) {
-    console.warn("Could not save Cloudinary configuration:", err);
-  }
-
-  return getCloudinaryConfig();
-}
-
-/**
- * Upload an image file directly to Cloudinary via unsigned upload.
- * 
- * @param {File|Blob} file The image file to upload
- * @param {Object} options
- * @param {string} options.folder Cloudinary target folder
- * @param {string} [options.cloudName] Override cloud name
- * @param {string} [options.uploadPreset] Override upload preset
- * @returns {Promise<{ url: string, publicId: string, provider: 'cloudinary', width: number, height: number, format: string, bytes: number }>}
+ * Upload an image file directly to Cloudinary via unsigned upload (secondary fallback).
  */
 export async function uploadToCloudinary(file, options = {}) {
-  const config = getCloudinaryConfig();
-  const cloudName = options.cloudName || config.cloudName;
-  const uploadPreset = options.uploadPreset || config.uploadPreset;
-  const folder = options.folder || config.folder || "nba_vlsi";
+  // Retrieve config dynamically in-memory from proxy endpoint
+  const config = await fetchCloudinaryConfigFromProxy();
+  const cloudName = options.cloudName || config?.cloudName;
+  const uploadPreset = options.uploadPreset || config?.uploadPreset;
+  const folder = options.folder || "nba_vlsi";
 
-  if (!cloudName) {
-    throw new Error("Cloudinary Cloud Name is not configured. Please set your Cloud Name in Cloud Settings.");
-  }
-
-  if (!uploadPreset) {
-    throw new Error("Cloudinary Upload Preset is not configured. Please create an unsigned upload preset and configure it in Cloud Settings.");
+  if (!cloudName || !uploadPreset) {
+    throw new Error("Cloudinary configuration not provided by proxy gateway.");
   }
 
   const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/upload`;
@@ -133,11 +66,7 @@ export async function uploadToCloudinary(file, options = {}) {
 }
 
 /**
- * Upload an image file to Firebase Storage as secondary cloud storage.
- * 
- * @param {File|Blob} file 
- * @param {string} pathPrefix 
- * @returns {Promise<{ url: string, provider: 'firebase', path: string }>}
+ * Upload an image file to Firebase Storage as cloud storage fallback.
  */
 export async function uploadToFirebaseStorage(file, pathPrefix = "uploads") {
   if (!firebaseEnabled || !storage) {
@@ -160,81 +89,58 @@ export async function uploadToFirebaseStorage(file, pathPrefix = "uploads") {
 
 /**
  * Unified Cloud Image Uploader.
- * Tries Cloudinary first if configured.
- * If Cloudinary fails or is unconfigured, falls back to Firebase Storage if available.
+ * 1. Primary: Uploads securely via the PHP proxy endpoint (server-side signed upload).
+ * 2. Secondary: Tries Cloudinary direct if proxy is unavailable.
+ * 3. Tertiary: Falls back to Firebase Storage.
+ * 4. Safe preview: If network fails, provides local preview without crashing.
  * 
- * @param {File|Blob} file
- * @param {Object} options
- * @returns {Promise<{ url: string, provider: 'cloudinary'|'firebase', publicId?: string }>}
+ * NOTE: NEVER stores API keys in localStorage.
  */
 export async function uploadImageToCloud(file, options = {}) {
   if (!file) {
     throw new Error("No file provided for upload.");
   }
 
-  // Basic validation
   if (file.type && !file.type.startsWith("image/")) {
     throw new Error("The selected file is not a supported image format.");
   }
 
-  const config = getCloudinaryConfig();
+  // 1. Primary: Server-side proxy upload (credentials stay secure on server)
+  try {
+    const base64Data = typeof file === "string" ? file : await fileToBase64(file);
+    const proxyRes = await uploadImageViaProxy(base64Data);
+    if (proxyRes && proxyRes.url) {
+      return proxyRes;
+    }
+  } catch (proxyErr) {
+    console.warn("Proxy upload attempt:", proxyErr?.message || proxyErr);
+  }
 
-  // 1. If Cloudinary is configured, try Cloudinary
-  if (config.isConfigured || options.cloudName) {
-    try {
-      return await uploadToCloudinary(file, options);
-    } catch (cloudErr) {
-      console.warn("Cloudinary upload attempt failed:", cloudErr.message);
+  // 2. Secondary: Direct Cloudinary
+  try {
+    return await uploadToCloudinary(file, options);
+  } catch (cloudErr) {
+    console.warn("Direct cloud upload attempt:", cloudErr?.message || cloudErr);
 
-      // Attempt fallback to Firebase Storage if available
-      if (firebaseEnabled && storage) {
-        console.info("Falling back to Firebase Storage for cloud upload...");
-        try {
-          return await uploadToFirebaseStorage(file, options.folder || "cloud_images");
-        } catch (fbErr) {
-          console.warn("Firebase Storage fallback also failed:", fbErr.message);
-        }
+    // 3. Tertiary: Firebase Storage
+    if (firebaseEnabled && storage) {
+      try {
+        return await uploadToFirebaseStorage(file, options.folder || "cloud_images");
+      } catch (fbErr) {
+        console.warn("Firebase Storage fallback failed:", fbErr.message);
       }
+    }
 
-      // Re-throw original Cloudinary error if both fail
+    // 4. Fallback local preview
+    try {
+      const dataUri = typeof file === "string" ? file : await fileToBase64(file);
+      return {
+        url: dataUri,
+        provider: "local_preview",
+        isFallback: true
+      };
+    } catch {
       throw cloudErr;
     }
-  }
-
-  // 2. If Cloudinary is not configured yet, try Firebase Storage
-  if (firebaseEnabled && storage) {
-    try {
-      return await uploadToFirebaseStorage(file, options.folder || "cloud_images");
-    } catch (fbErr) {
-      console.warn("Firebase Storage upload failed:", fbErr.message);
-    }
-  }
-
-  // 3. If neither is ready
-  throw new Error(
-    "Cloud storage is not configured. Please configure your Cloudinary Cloud Name and unsigned Upload Preset in Cloud Settings."
-  );
-}
-
-/**
- * Test a Cloudinary configuration with a lightweight 1x1 GIF test upload.
- */
-export async function testCloudinaryConnection(cloudName, uploadPreset) {
-  if (!cloudName || !uploadPreset) {
-    return { ok: false, error: "Both Cloud Name and Upload Preset are required." };
-  }
-
-  try {
-    // 1x1 transparent gif base64
-    const test1x1Gif = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-    const res = await uploadToCloudinary(test1x1Gif, {
-      cloudName: cloudName.trim(),
-      uploadPreset: uploadPreset.trim(),
-      folder: "nba_vlsi/test_connection"
-    });
-
-    return { ok: true, url: res.url, publicId: res.publicId };
-  } catch (err) {
-    return { ok: false, error: err.message || "Failed to reach Cloudinary." };
   }
 }

@@ -87,56 +87,72 @@ export default function App() {
       return;
     }
 
-    if (!firebaseEnabled || !auth) {
-      return;
+    let unsubscribe = null;
+
+    function setupAuthListener() {
+      if (!firebaseEnabled || !auth) {
+        setLoading(false);
+        return;
+      }
+
+      unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+          let role = null;
+          let requestedRole = "Developer";
+          let status = "Pending Approval";
+
+          // Query role directly from Firestore (/admins and /users) - NO local code overrides!
+          try {
+            const fsData = await checkEmailRoleFromFirestore(currentUser.email, currentUser.uid);
+            if (fsData) {
+              role = fsData.role !== undefined ? fsData.role : null;
+              if (fsData.requestedRole) requestedRole = fsData.requestedRole;
+              if (fsData.status) status = fsData.status;
+            }
+          } catch (e) {
+            console.warn("Firestore role lookup error:", e);
+          }
+
+          saveRegisteredUser({
+            id: currentUser.uid,
+            name: currentUser.displayName || currentUser.email?.split("@")[0],
+            email: currentUser.email,
+            role,
+            requestedRole,
+            status
+          });
+
+          setUser({
+            ...currentUser,
+            role,
+            requestedRole,
+            status
+          });
+
+          // When user logs in, ensure route is /app if on login
+          if (window.location.pathname === "/login" || window.location.hash === "#/login") {
+            navigateTo("/app");
+          }
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      });
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        let role = null;
-        let requestedRole = "Developer";
-        let status = "Pending Approval";
+    setupAuthListener();
 
-        // Query role directly from Firestore (/admins and /users) - NO local code overrides!
-        try {
-          const fsData = await checkEmailRoleFromFirestore(currentUser.email, currentUser.uid);
-          if (fsData) {
-            role = fsData.role !== undefined ? fsData.role : null;
-            if (fsData.requestedRole) requestedRole = fsData.requestedRole;
-            if (fsData.status) status = fsData.status;
-          }
-        } catch (e) {
-          console.warn("Firestore role lookup error:", e);
-        }
+    // In case Firebase finishes initialization right after mount
+    const handleInitialized = () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+      setupAuthListener();
+    };
 
-        saveRegisteredUser({
-          id: currentUser.uid,
-          name: currentUser.displayName || currentUser.email?.split("@")[0],
-          email: currentUser.email,
-          role,
-          requestedRole,
-          status
-        });
-
-        setUser({
-          ...currentUser,
-          role,
-          requestedRole,
-          status
-        });
-
-        // When user logs in, ensure route is /app if on login
-        if (window.location.pathname === "/login" || window.location.hash === "#/login") {
-          navigateTo("/app");
-        }
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    });
+    window.addEventListener("firebase-initialized", handleInitialized);
 
     return () => {
       if (typeof unsubscribe === "function") unsubscribe();
+      window.removeEventListener("firebase-initialized", handleInitialized);
     };
   }, []);
 
