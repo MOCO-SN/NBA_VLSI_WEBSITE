@@ -19,7 +19,20 @@ export default function Header({ page, user, onMenu, onLogout, onViewLanding }) 
           </button>
         )}
         <div className="top-user">
-          <CircleUserRound size={17} />
+          {user?.photoURL ? (
+            <img
+              src={user.photoURL}
+              alt={user?.displayName || "User"}
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "50%",
+                objectFit: "cover"
+              }}
+            />
+          ) : (
+            <CircleUserRound size={17} />
+          )}
           <span>{user?.displayName || "User"}</span>
           {user?.role && (
             <span

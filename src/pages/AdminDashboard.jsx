@@ -12,8 +12,15 @@ import {
   Clock,
   Sparkles,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Mail,
+  Send,
+  Inbox,
+  MessageSquare,
+  Check,
+  Cloud
 } from "lucide-react";
+import CloudinarySettingsModal from "../components/CloudinarySettingsModal";
 import {
   getRegisteredUsers,
   fetchUsersFromFirestore,
@@ -26,19 +33,33 @@ import {
   getActivityLogs,
   clearActivityLogs
 } from "../utils/activityLogger";
+import {
+  getContactMessages,
+  fetchContactMessagesFromFirestore,
+  toggleContactStatus,
+  deleteContactMessage
+} from "../utils/contactMessages";
 
 export default function AdminDashboard({ user }) {
   const isAdmin = user?.role === "Admin";
-  const [activeTab, setActiveTab] = useState("users"); // "users" | "logs"
+  const [activeTab, setActiveTab] = useState("users"); // "users" | "logs" | "contacts"
   const [users, setUsers] = useState(getRegisteredUsers);
   const [logs, setLogs] = useState(getActivityLogs);
+  const [contacts, setContacts] = useState(getContactMessages);
 
-  // Sync users live from Firestore /admins and /users on mount
+  // Sync users and contacts live from Firestore on mount
   useEffect(() => {
     fetchUsersFromFirestore().then((fresh) => {
       if (fresh && fresh.length > 0) setUsers(fresh);
     });
+    fetchContactMessagesFromFirestore().then((fresh) => {
+      if (fresh && fresh.length > 0) setContacts(fresh);
+    });
   }, []);
+
+  // Contact filters
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactStatusFilter, setContactStatusFilter] = useState("All");
 
   // User filters
   const [userSearch, setUserSearch] = useState("");
@@ -167,6 +188,56 @@ export default function AdminDashboard({ user }) {
     });
   }, [logs, logSearch, logCategory]);
 
+  // Handle contact status toggle
+  const handleToggleContactStatus = async (id) => {
+    try {
+      const updated = await toggleContactStatus(id);
+      setContacts(updated);
+      showFeedback("Contact status updated.");
+    } catch (err) {
+      showFeedback(err.message || "Failed to update contact status.", "error");
+    }
+  };
+
+  // Delete contact
+  const handleDeleteContact = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this contact inquiry?")) return;
+    try {
+      const updated = await deleteContactMessage(id);
+      setContacts(updated);
+      showFeedback("Contact message removed.");
+    } catch (err) {
+      showFeedback(err.message || "Failed to delete contact.", "error");
+    }
+  };
+
+  // Export contacts
+  const handleExportContacts = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(contacts, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `landing_contacts_${new Date().toISOString().split("T")[0]}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  // Filtered contacts
+  const filteredContacts = useMemo(() => {
+    return contacts.filter((c) => {
+      const matchesStatus = contactStatusFilter === "All" || c.status === contactStatusFilter;
+      const q = contactSearch.toLowerCase();
+      const matchesSearch =
+        !q ||
+        c.name?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.message?.toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [contacts, contactSearch, contactStatusFilter]);
+
+  const newContactsCount = contacts.filter((c) => c.status === "New").length;
+
   // Counts
   const adminCount = users.filter((u) => u.role === "Admin").length;
   const leadCount = users.filter((u) => u.role === "Robotics Lead" || u.role === "Hardware Engineer").length;
@@ -193,17 +264,37 @@ export default function AdminDashboard({ user }) {
         <div>
           <div className="eyebrow">ADMINISTRATIVE GOVERNANCE</div>
           <h1>Admin Console</h1>
-          <p>Manage registered users, assign roles, and audit workspace security & activity logs.</p>
+          <p>Manage registered users, assign roles, view landing inquiries, and audit system logs.</p>
         </div>
 
         {/* Tab Switcher */}
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button
             onClick={() => setActiveTab("users")}
             className={`primary-button compact ${activeTab === "users" ? "" : "outline-button"}`}
             style={activeTab === "users" ? {} : { background: "#fff", color: "var(--navy)" }}
           >
             <Users size={16} /> Registered Users ({users.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("contacts")}
+            className={`primary-button compact ${activeTab === "contacts" ? "" : "outline-button"}`}
+            style={activeTab === "contacts" ? {} : { background: "#fff", color: "var(--navy)" }}
+          >
+            <Mail size={16} /> Landing Inquiries ({contacts.length})
+            {newContactsCount > 0 && (
+              <span style={{
+                background: "#ff825c",
+                color: "#fff",
+                fontSize: "10px",
+                fontWeight: 700,
+                padding: "1px 6px",
+                borderRadius: "10px",
+                marginLeft: "4px"
+              }}>
+                {newContactsCount} new
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab("logs")}
@@ -224,6 +315,18 @@ export default function AdminDashboard({ user }) {
           <div>
             <span>REGISTERED USERS</span>
             <strong>{users.length}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: "#ffedd5", color: "#ea580c" }}>
+            <Mail size={19} />
+          </div>
+          <div>
+            <span>LANDING INQUIRIES</span>
+            <strong style={{ color: newContactsCount > 0 ? "#ea580c" : "inherit" }}>
+              {contacts.length} {newContactsCount > 0 && `(${newContactsCount} new)`}
+            </strong>
           </div>
         </div>
 
@@ -687,6 +790,272 @@ export default function AdminDashboard({ user }) {
               );
             })}
           </div>
+        </section>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          TAB 3: LANDING PAGE INQUIRIES & CONTACT MESSAGES
+          ════════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "contacts" && (
+        <section className="panel" style={{ padding: "20px" }}>
+          {/* Controls Bar */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "14px",
+              flexWrap: "wrap",
+              marginBottom: "20px"
+            }}
+          >
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: "1 1 320px", maxWidth: "600px" }}>
+              <div className="input-box" style={{ flex: 1, height: "40px" }}>
+                <Search size={16} />
+                <input
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                  placeholder="Search inquiries by submitter name, email, or message..."
+                />
+              </div>
+
+              {/* Status Filter */}
+              <select
+                value={contactStatusFilter}
+                onChange={(e) => setContactStatusFilter(e.target.value)}
+                style={{
+                  height: "40px",
+                  padding: "0 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  background: "var(--card)",
+                  color: "var(--text)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                <option value="All">All Inquiries ({contacts.length})</option>
+                <option value="New">New ({newContactsCount})</option>
+                <option value="Resolved">Resolved ({contacts.length - newContactsCount})</option>
+              </select>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              {contacts.length > 0 && (
+                <button
+                  type="button"
+                  className="outline-button"
+                  onClick={handleExportContacts}
+                  style={{ height: "40px", fontSize: "12px" }}
+                  title="Export contact messages as JSON"
+                >
+                  <Download size={14} /> Export Inquiries
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List of Contact Inquiries */}
+          {filteredContacts.length === 0 ? (
+            <div style={{ padding: "50px 20px", textAlign: "center", color: "var(--muted)" }}>
+              <Inbox size={42} style={{ margin: "0 auto 12px", opacity: 0.5 }} />
+              <strong style={{ display: "block", fontSize: "14px", color: "var(--text)", marginBottom: "4px" }}>
+                No Contact Inquiries Found
+              </strong>
+              <p style={{ fontSize: "12px", margin: 0 }}>
+                {contactSearch || contactStatusFilter !== "All"
+                  ? "Try adjusting your search query or status filter."
+                  : "Messages submitted via the Landing Page contact form will appear here in real time."}
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {filteredContacts.map((c) => {
+                const isNew = c.status === "New";
+                const dateStr = new Date(c.timestamp).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit"
+                });
+
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      padding: "18px 20px",
+                      borderRadius: "12px",
+                      background: "var(--card)",
+                      border: `1.5px solid ${isNew ? "var(--blue)" : "var(--border)"}`,
+                      boxShadow: isNew ? "0 4px 14px rgba(26,127,212,0.08)" : "var(--shadow)",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    {/* Header Row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: "12px",
+                        flexWrap: "wrap",
+                        marginBottom: "12px"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div
+                          className="avatar small"
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "10px",
+                            fontSize: "13px",
+                            fontWeight: 700
+                          }}
+                        >
+                          {(c.name || "U")[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: "14px", color: "var(--text)", display: "block" }}>
+                            {c.name}
+                          </strong>
+                          <a
+                            href={`mailto:${c.email}`}
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--blue)",
+                              textDecoration: "none",
+                              fontFamily: "DM Mono",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px"
+                            }}
+                          >
+                            <Mail size={12} /> {c.email}
+                          </a>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "3px 10px",
+                            borderRadius: "20px",
+                            background: isNew ? "rgba(255, 130, 92, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                            color: isNew ? "#ff825c" : "#10b981",
+                            border: `1px solid ${isNew ? "rgba(255, 130, 92, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+                            letterSpacing: "0.5px"
+                          }}
+                        >
+                          {isNew ? "● NEW INQUIRY" : "✓ RESOLVED"}
+                        </span>
+
+                        <span style={{ fontSize: "11px", color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <Clock size={12} /> {dateStr}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Message Box */}
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: "8px",
+                        background: "var(--soft)",
+                        border: "1px solid var(--border)",
+                        fontSize: "13px",
+                        lineHeight: 1.6,
+                        color: "var(--text)",
+                        whiteSpace: "pre-wrap",
+                        marginBottom: "14px"
+                      }}
+                    >
+                      {c.message}
+                    </div>
+
+                    {/* Action Bar */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: "12px"
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <a
+                          href={`mailto:${c.email}?subject=RE: NBA VLSI Lab Inquiry&body=Hi ${encodeURIComponent(c.name)},%0D%0A%0D%0AThank you for reaching out to the NBA VLSI & Robotics Lab regarding your inquiry.%0D%0A%0D%0A`}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "6px 14px",
+                            borderRadius: "7px",
+                            background: "var(--blue)",
+                            color: "#fff",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            textDecoration: "none"
+                          }}
+                        >
+                          <Send size={12} /> Reply via Email
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleContactStatus(c.id)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            padding: "6px 12px",
+                            borderRadius: "7px",
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            color: "var(--text)",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: "pointer"
+                          }}
+                        >
+                          {isNew ? <Check size={13} color="#10b981" /> : <Clock size={13} />}
+                          {isNew ? "Mark as Resolved" : "Mark as New"}
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteContact(c.id)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "6px 10px",
+                          borderRadius: "7px",
+                          background: "none",
+                          border: 0,
+                          color: "#ef4444",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer"
+                        }}
+                        title="Delete Inquiry"
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
     </>

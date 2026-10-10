@@ -10,6 +10,7 @@ import Profile from "./Profile";
 import Settings from "./Settings";
 import RoboticsTeam from "./RoboticsTeam";
 import AdminDashboard from "./AdminDashboard";
+import Attendance from "./Attendance";
 import { getRegisteredUsers } from "../utils/userDirectory";
 
 export default function Dashboard({ user, onLogout, onUpdateUser, onViewLanding }) {
@@ -125,6 +126,7 @@ export default function Dashboard({ user, onLogout, onUpdateUser, onViewLanding 
     if (page === "Overview") return <Overview user={currentUser} files={files} stats={stats} setPage={setPage} />;
     if (page === "Admin Console") return <AdminDashboard user={currentUser} />;
     if (page === "Codes") return <Codes user={currentUser} files={files} setFiles={handleSetFiles} />;
+    if (page === "Attendance") return <Attendance user={currentUser} />;
     if (page === "Project") return <Project user={currentUser} />;
     if (page === "Robotics Team") return <RoboticsTeam user={currentUser} />;
     if (page === "Profile") return <Profile user={currentUser} onUpdateUser={onUpdateUser} />;

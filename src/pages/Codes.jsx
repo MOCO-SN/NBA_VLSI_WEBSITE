@@ -8,7 +8,10 @@ import {
   Eye,
   CheckCircle2,
   X,
-  FileText
+  FileText,
+  Clock,
+  UploadCloud,
+  Code2
 } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db, firebaseEnabled, storage } from "../firebase";
@@ -43,12 +46,12 @@ export default function Codes({ user, files, setFiles }) {
 
         if (firebaseEnabled && storage && db) {
           try {
-            const storageRef = ref(storage, `users/${user.uid}/codes/${Date.now()}-${file.name}`);
+            const storageRef = ref(storage, `users/${user?.uid || "guest"}/codes/${Date.now()}-${file.name}`);
             await uploadBytes(storageRef, file);
             const url = await getDownloadURL(storageRef);
 
             await addDoc(collection(db, "codes"), {
-              uid: user.uid,
+              uid: user?.uid || "guest",
               name: file.name,
               language: detectLanguage(file.name),
               size: file.size,
@@ -69,7 +72,7 @@ export default function Codes({ user, files, setFiles }) {
           language: detectLanguage(file.name),
           size: file.size,
           content: textContent,
-          updatedAt: "Just now"
+          updatedAt: new Date().toISOString()
         };
         setFiles((current) => [localFile, ...current]);
       }
@@ -82,7 +85,7 @@ export default function Codes({ user, files, setFiles }) {
   }
 
   async function removeFile(file) {
-    if (!confirm(`Delete ${file.name}?`)) return;
+    if (!window.confirm(`Delete ${file.name}?`)) return;
 
     if (firebaseEnabled && db && file.id && !file.id.includes("-")) {
       try {
@@ -118,6 +121,7 @@ export default function Codes({ user, files, setFiles }) {
 
   return (
     <>
+      {/* ── Page Header ── */}
       <div className="page-heading">
         <div>
           <div className="eyebrow">Workspace</div>
@@ -125,8 +129,8 @@ export default function Codes({ user, files, setFiles }) {
           <p>Upload, inspect, and manage your source code files in real-time.</p>
         </div>
         <button
-          className="primary-button compact"
-          onClick={() => inputRef.current?.click()}
+          className="primary-button"
+          onClick={() => { setPreviewFile(null); inputRef.current?.click(); }}
           disabled={busy}
         >
           <Upload size={16} /> {busy ? "Uploading..." : "Upload Code"}
@@ -134,159 +138,223 @@ export default function Codes({ user, files, setFiles }) {
         <input ref={inputRef} type="file" multiple hidden onChange={uploadFiles} />
       </div>
 
-      <section className="panel codes-panel">
-        <div className="codes-toolbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search uploaded codes..."
-            />
-          </div>
-          <span className="result-count">{filtered.length} files</span>
-        </div>
+      {/* ── Two-column layout ── */}
+      <div className="projects-split" style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr", gap: "18px", alignItems: "start" }}>
 
-        <div className="code-table">
-          <div className="code-table-head">
-            <span>FILE</span>
-            <span>LANGUAGE</span>
-            <span>SIZE</span>
-            <span>UPDATED</span>
-            <span style={{ textAlign: "right" }}>ACTIONS</span>
-          </div>
-
-          {filtered.length === 0 && (
-            <div className="empty-state">
-              <FileCode2 size={30} />
-              <strong>No code files found</strong>
-              <span>Upload your first source file to get started.</span>
-            </div>
-          )}
-
-          {filtered.map((file) => (
-            <div className="code-table-row" key={file.id}>
-              <div
-                className="code-name"
-                style={{ cursor: "pointer" }}
-                onClick={() => setPreviewFile(file)}
-                title="Click to view file"
-              >
-                <div className="file-icon"><FileCode2 size={17} /></div>
-                <strong>{file.name}</strong>
-              </div>
-              <span>{file.language || "Source"}</span>
-              <span>{formatSize(file.size)}</span>
-              <span>{file.updatedAt || "Recently"}</span>
-              <div className="row-actions">
-                <button
-                  type="button"
-                  onClick={() => setPreviewFile(file)}
-                  title="Inspect Code"
-                  aria-label="Inspect Code"
-                >
-                  <Eye size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDownload(file)}
-                  title="Download File"
-                  aria-label="Download File"
-                >
-                  <Download size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeFile(file)}
-                  title="Delete File"
-                  aria-label="Delete File"
-                  style={{ color: "#ef4444" }}
-                >
-                  <Trash2 size={16} />
-                </button>
+        {/* ════ LEFT: File Recycler List ════ */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          
+          {/* Search Bar */}
+          <div className="panel" style={{ padding: "14px 16px" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <div className="search-box" style={{ flex: 1, height: "38px" }}>
+                <Search size={15} />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search code files..."
+                />
+                {search && (
+                  <button onClick={() => setSearch("")} style={{ border: 0, background: "none", color: "var(--muted)", cursor: "pointer" }}>
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </div>
-          ))}
+            <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "10px" }}>
+              {filtered.length} file{filtered.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+
+          {/* Files List */}
+          <div className="project-recycler" style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "70vh", overflowY: "auto", paddingRight: "4px" }}>
+            {filtered.length === 0 ? (
+              <div className="panel" style={{ padding: "40px 20px", textAlign: "center" }}>
+                <FileCode2 size={36} style={{ color: "var(--muted)", marginBottom: "12px", opacity: 0.5 }} />
+                <strong style={{ display: "block", fontSize: "14px", marginBottom: "6px" }}>
+                  {files.length === 0 ? "No code files yet" : "No matches found"}
+                </strong>
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  {files.length === 0
+                    ? "Click Upload Code to add your first source file."
+                    : "Try adjusting your search."}
+                </span>
+              </div>
+            ) : (
+              filtered.map((file) => {
+                const isActive = previewFile?.id === file.id;
+                
+                // Color code the language badge slightly
+                const langLower = (file.language || "").toLowerCase();
+                let badgeBg = "var(--soft)";
+                let badgeColor = "var(--navy)";
+                if (langLower.includes("react") || langLower.includes("jsx")) { badgeBg = "#e0f7ff"; badgeColor = "#0078a8"; }
+                else if (langLower.includes("python")) { badgeBg = "#fef3c7"; badgeColor = "#b45309"; }
+                else if (langLower.includes("c") || langLower.includes("cpp")) { badgeBg = "#ede9fe"; badgeColor = "#7c3aed"; }
+
+                return (
+                  <div
+                    key={file.id}
+                    onClick={() => setPreviewFile(file)}
+                    style={{
+                      background: isActive ? "var(--soft)" : "var(--card)",
+                      border: `1.5px solid ${isActive ? "var(--blue)" : "var(--border)"}`,
+                      borderRadius: "14px",
+                      padding: "16px",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      boxShadow: isActive ? "0 0 0 3px rgba(26,127,212,0.1)" : "var(--shadow)"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                      <div style={{
+                        width: "42px", height: "42px", borderRadius: "10px", flexShrink: 0,
+                        background: isActive ? "var(--blue)" : "var(--soft)",
+                        color: isActive ? "#fff" : "var(--navy)",
+                        display: "grid", placeItems: "center"
+                      }}>
+                        <Code2 size={20} />
+                      </div>
+                      
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                          <strong style={{ fontSize: "13px", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {file.name}
+                          </strong>
+                          <span style={{
+                            padding: "2px 8px", borderRadius: "20px", fontSize: "9px",
+                            fontWeight: "700", flexShrink: 0,
+                            background: badgeBg, color: badgeColor
+                          }}>
+                            {file.language || "Source"}
+                          </span>
+                        </div>
+                        
+                        <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "8px", fontSize: "10px", color: "var(--muted)" }}>
+                          <span>{formatSize(file.size)}</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <Clock size={11} /> 
+                            {file.updatedAt && file.updatedAt !== "Just now" 
+                              ? new Date(file.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) 
+                              : "Just now"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Row footer: Actions */}
+                    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--border)", gap: "6px" }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownload(file); }}
+                        style={{
+                          border: "1px solid var(--border)", background: "var(--card)",
+                          borderRadius: "7px", padding: "4px 9px", cursor: "pointer",
+                          fontSize: "11px", color: "var(--muted)",
+                          display: "flex", alignItems: "center", gap: "4px"
+                        }}
+                        title="Download"
+                      >
+                        <Download size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeFile(file); }}
+                        style={{
+                          border: "1px solid #fecaca", background: "#fef2f2",
+                          borderRadius: "7px", padding: "4px 9px", cursor: "pointer",
+                          color: "#dc2626", display: "flex", alignItems: "center", gap: "4px"
+                        }}
+                        title="Delete"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-      </section>
 
-      <div className="info-strip">
-        <CheckCircle2 size={17} />
-        Uploaded files belong to {user?.displayName || "your account"} and are secured under your workspace.
-      </div>
-
-      {/* Code Inspector / Preview Modal */}
-      {previewFile && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            zIndex: 100,
-            display: "grid",
-            placeItems: "center",
-            padding: "16px"
-          }}
-          onClick={() => setPreviewFile(null)}
-        >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "14px",
-              width: "min(720px, 100%)",
-              maxHeight: "85vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-              overflow: "hidden"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+        {/* ════ RIGHT: Preview / Upload Form ════ */}
+        <div style={{ position: "sticky", top: "18px" }}>
+          {previewFile ? (
+            /* ── Code Preview View ── */
+            <div className="panel" style={{ padding: "0", overflow: "hidden", display: "flex", flexDirection: "column", height: "70vh", border: "1.5px solid var(--blue)" }}>
+              {/* Header */}
+              <div style={{
+                padding: "16px 20px", borderBottom: "1px solid var(--border)",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
                 background: "var(--soft)"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <FileText size={20} color="var(--navy)" />
-                <div>
-                  <strong style={{ fontSize: "14px", display: "block" }}>{previewFile.name}</strong>
-                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>
-                    {previewFile.language} · {formatSize(previewFile.size)}
-                  </span>
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", overflow: "hidden" }}>
+                  <FileText size={18} color="var(--blue)" style={{ flexShrink: 0 }} />
+                  <div style={{ overflow: "hidden" }}>
+                    <strong style={{ fontSize: "14px", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {previewFile.name}
+                    </strong>
+                    <span style={{ fontSize: "10px", color: "var(--muted)" }}>
+                      {previewFile.language} • {formatSize(previewFile.size)}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                  <button
+                    className="outline-button"
+                    style={{ height: "32px", padding: "0 12px", fontSize: "11px", background: "var(--card)" }}
+                    onClick={() => handleDownload(previewFile)}
+                  >
+                    <Download size={14} /> <span className="hide-mobile">Download</span>
+                  </button>
+                  <button
+                    style={{ border: "1px solid var(--border)", borderRadius: "8px", background: "var(--card)", padding: "0 8px", cursor: "pointer", color: "var(--muted)", display: "grid", placeItems: "center" }}
+                    onClick={() => setPreviewFile(null)}
+                    title="Close Preview"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  className="outline-button"
-                  style={{ height: "32px", padding: "0 12px", fontSize: "11px" }}
-                  onClick={() => handleDownload(previewFile)}
-                >
-                  <Download size={14} /> Download
-                </button>
-                <button
-                  style={{ border: 0, background: "transparent", cursor: "pointer", color: "var(--muted)" }}
-                  onClick={() => setPreviewFile(null)}
-                  aria-label="Close"
-                >
-                  <X size={20} />
-                </button>
+              
+              {/* Code Content */}
+              <div style={{ padding: "16px", overflowY: "auto", flex: 1, background: "#1e1e1e", color: "#d4d4d4" }}>
+                <pre style={{ margin: 0, fontFamily: "'DM Mono', monospace", fontSize: "13px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
+                  {previewFile.content || `// Source code for ${previewFile.name}\n// Language: ${previewFile.language}\n// Size: ${formatSize(previewFile.size)}\n\n(File preview available - click Download to retrieve full binary/raw source)`}
+                </pre>
               </div>
             </div>
-
-            <div style={{ padding: "16px", overflowY: "auto", flex: 1, background: "#1e1e1e", color: "#d4d4d4" }}>
-              <pre style={{ margin: 0, fontFamily: "'DM Mono', monospace", fontSize: "12px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
-                {previewFile.content || `// Source code for ${previewFile.name}\n// Language: ${previewFile.language}\n// Size: ${formatSize(previewFile.size)}\n\n(File preview available - click Download to retrieve full binary/raw source)`}
-              </pre>
+          ) : (
+            /* ── Upload State ── */
+            <div className="panel" style={{ padding: "40px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "70vh", border: "2px dashed var(--border)" }}>
+              <div style={{
+                width: "64px", height: "64px", borderRadius: "16px",
+                background: "linear-gradient(135deg, #0c2340, #1a7fd4)",
+                color: "#00c8ff", display: "grid", placeItems: "center",
+                marginBottom: "20px"
+              }}>
+                <UploadCloud size={30} />
+              </div>
+              <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>Upload Source Code</h2>
+              <p style={{ fontSize: "12px", color: "var(--muted)", maxWidth: "260px", marginBottom: "24px", lineHeight: "1.5" }}>
+                Select files from your computer to add to the workspace repository.
+              </p>
+              
+              <button
+                className="primary-button"
+                style={{ padding: "0 24px", height: "44px", fontSize: "13px" }}
+                onClick={() => inputRef.current?.click()}
+                disabled={busy}
+              >
+                <Upload size={16} /> {busy ? "Uploading..." : "Select Files"}
+              </button>
+              
+              <div style={{ marginTop: "24px", fontSize: "11px", color: "var(--muted)", display: "flex", alignItems: "center", gap: "6px" }}>
+                <CheckCircle2 size={13} color="#10b981" />
+                Files are secured in your workspace
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </>
   );
 }

@@ -7,7 +7,8 @@ import {
   X,
   Bot,
   LayoutDashboard,
-  ShieldCheck
+  ShieldCheck,
+  CalendarCheck
 } from "lucide-react";
 
 export default function Sidebar({ page, setPage, onLogout, mobileOpen, onClose, user }) {
@@ -17,6 +18,7 @@ export default function Sidebar({ page, setPage, onLogout, mobileOpen, onClose, 
     ["Overview", LayoutDashboard],
     ...(isAdmin ? [["Admin Console", ShieldCheck]] : []),
     ["Codes", Code2],
+    ["Attendance", CalendarCheck],
     ["Project", FolderKanban],
     ["Robotics Team", Bot],
     ["Profile", UserRound],
@@ -42,7 +44,7 @@ export default function Sidebar({ page, setPage, onLogout, mobileOpen, onClose, 
         >
           <div className="brand-logo"><Code2 size={18} /></div>
           <div>
-            <strong>MOCOSN</strong>
+            <strong>DEVELOPMENT CLUB</strong>
             <span>{isAdmin ? "ADMIN CONSOLE" : "ELECTRO-BOTICS"}</span>
           </div>
         </div>
@@ -81,12 +83,26 @@ export default function Sidebar({ page, setPage, onLogout, mobileOpen, onClose, 
       <div className="sidebar-spacer" />
 
       <div className="sidebar-user">
-        <div
-          className="avatar small"
-          style={isAdmin ? { background: "#fee2e2", color: "#b91c1c" } : {}}
-        >
-          {initials}
-        </div>
+        {user?.photoURL ? (
+          <img
+            src={user.photoURL}
+            alt={displayName}
+            style={{
+              width: "36px",
+              height: "36px",
+              borderRadius: "10px",
+              objectFit: "cover",
+              border: "1.5px solid var(--border)"
+            }}
+          />
+        ) : (
+          <div
+            className="avatar small"
+            style={isAdmin ? { background: "#fee2e2", color: "#b91c1c" } : {}}
+          >
+            {initials}
+          </div>
+        )}
         <div className="user-mini">
           <strong>{displayName}</strong>
           <span style={isAdmin ? { color: "#b91c1c", fontWeight: "600" } : {}}>
