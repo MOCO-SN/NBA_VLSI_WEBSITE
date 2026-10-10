@@ -162,14 +162,26 @@ export function getProxyEndpoints(endpoint = "") {
   candidates.push(`https://devclub.wasmer.app/api${cleanEndpoint}`);
   candidates.push(`https://devclub.wasmer.app/index.php${cleanEndpoint}`);
 
-  // 2. Relative paths when deployed on same origin
-  candidates.push(`/php/index.php${cleanEndpoint}`);
-  candidates.push(`/php/index.php`);
+  // 2. Relative paths when running on custom server with PHP support (not Vercel)
+  if (
+    typeof window !== "undefined" &&
+    !window.location.hostname.includes("vercel.app") &&
+    !window.location.hostname.includes("mocosn.in")
+  ) {
+    candidates.push(`/php/index.php${cleanEndpoint}`);
+    candidates.push(`/php/index.php`);
+  }
 
   // 3. Localhost development environments
-  candidates.push(`http://localhost:8000${cleanEndpoint}`);
-  candidates.push(`http://localhost:8000/index.php${cleanEndpoint}`);
-  candidates.push(`http://localhost/NBA_VLSI_WEBSITE/php/index.php${cleanEndpoint}`);
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  if (isLocalhost) {
+    candidates.push(`http://localhost:8000${cleanEndpoint}`);
+    candidates.push(`http://localhost:8000/index.php${cleanEndpoint}`);
+    candidates.push(`http://localhost/NBA_VLSI_WEBSITE/php/index.php${cleanEndpoint}`);
+  }
 
   return candidates;
 }
@@ -194,15 +206,26 @@ export async function callProxy(endpoint, payload = {}) {
   let lastError = null;
 
   for (const url of candidateUrls) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
     try {
       const res = await fetch(url, {
         method: "POST",
         headers,
-        body: bodyString
+        body: bodyString,
+        signal: controller.signal
       });
 
-      if (res.ok) {
+      const contentType = res.headers.get("content-type") || "";
+
+      if (res.ok && contentType.includes("application/json")) {
         return await res.json();
+      }
+
+      if (res.ok && !contentType.includes("application/json")) {
+        // Received HTML response (e.g. SPA index.html fallback) instead of JSON
+        continue;
       }
 
       const errText = await res.text();
@@ -216,11 +239,15 @@ export async function callProxy(endpoint, payload = {}) {
       }
     } catch (netErr) {
       lastError = netErr;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
   throw lastError || new Error("Failed to reach PHP proxy endpoint.");
 }
+
+let pendingFirebasePromise = null;
 
 /**
  * Fetch verified Firebase Configuration from the PHP proxy.
@@ -230,19 +257,29 @@ export async function fetchFirebaseConfigFromProxy() {
   if (inMemoryFirebaseConfig) {
     return inMemoryFirebaseConfig;
   }
-
-  try {
-    const data = await callProxy("/firebase-config");
-    if (data && data.apiKey && data.projectId) {
-      inMemoryFirebaseConfig = data;
-      return data;
-    }
-  } catch (err) {
-    console.warn("Could not fetch Firebase config from PHP proxy (using fallback):", err.message);
+  if (pendingFirebasePromise) {
+    return pendingFirebasePromise;
   }
 
-  return inMemoryFirebaseConfig;
+  pendingFirebasePromise = (async () => {
+    try {
+      const data = await callProxy("/firebase-config");
+      if (data && data.apiKey && data.projectId) {
+        inMemoryFirebaseConfig = data;
+        return data;
+      }
+    } catch (err) {
+      console.warn("Could not fetch Firebase config from PHP proxy (using fallback):", err.message);
+    } finally {
+      pendingFirebasePromise = null;
+    }
+    return inMemoryFirebaseConfig;
+  })();
+
+  return pendingFirebasePromise;
 }
+
+let pendingCloudinaryPromise = null;
 
 /**
  * Fetch Cloudinary Configuration from the PHP proxy.
@@ -252,18 +289,26 @@ export async function fetchCloudinaryConfigFromProxy() {
   if (inMemoryCloudinaryConfig) {
     return inMemoryCloudinaryConfig;
   }
-
-  try {
-    const data = await callProxy("/cloudinary-config");
-    if (data && data.cloudName) {
-      inMemoryCloudinaryConfig = data;
-      return data;
-    }
-  } catch (err) {
-    console.warn("Could not fetch Cloudinary config from PHP proxy:", err.message);
+  if (pendingCloudinaryPromise) {
+    return pendingCloudinaryPromise;
   }
 
-  return inMemoryCloudinaryConfig;
+  pendingCloudinaryPromise = (async () => {
+    try {
+      const data = await callProxy("/cloudinary-config");
+      if (data && data.cloudName) {
+        inMemoryCloudinaryConfig = data;
+        return data;
+      }
+    } catch (err) {
+      console.warn("Could not fetch Cloudinary config from PHP proxy:", err.message);
+    } finally {
+      pendingCloudinaryPromise = null;
+    }
+    return inMemoryCloudinaryConfig;
+  })();
+
+  return pendingCloudinaryPromise;
 }
 
 /**

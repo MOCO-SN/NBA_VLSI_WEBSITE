@@ -36,6 +36,8 @@ export function onFirebaseReady(cb) {
   }
 }
 
+let initPromise = null;
+
 /**
  * Dynamically initialize Firebase from the backend proxy endpoint.
  */
@@ -43,41 +45,50 @@ export async function initFirebaseFromProxy() {
   if (firebaseEnabled && app) {
     return true;
   }
-
-  try {
-    const config = await fetchFirebaseConfigFromProxy();
-    if (config && config.apiKey && config.projectId) {
-      app = !getApps().length ? initializeApp(config) : getApp();
-      auth = getAuth(app);
-      db = getFirestore(app);
-      storage = getStorage(app);
-      googleProvider = new GoogleAuthProvider();
-      googleProvider.setCustomParameters({ prompt: "select_account" });
-      firebaseEnabled = true;
-
-      // Trigger listeners
-      readyCallbacks.forEach((cb) => {
-        try {
-          cb({ app, auth, db, storage });
-        } catch {}
-      });
-      readyCallbacks.length = 0;
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("firebase-initialized", {
-            detail: { app, auth, db, storage }
-          })
-        );
-      }
-
-      return true;
-    }
-  } catch (err) {
-    console.warn("Could not load Firebase configuration from proxy endpoint:", err.message);
+  if (initPromise) {
+    return initPromise;
   }
 
-  return false;
+  initPromise = (async () => {
+    try {
+      const config = await fetchFirebaseConfigFromProxy();
+      if (config && config.apiKey && config.projectId) {
+        app = !getApps().length ? initializeApp(config) : getApp();
+        auth = getAuth(app);
+        db = getFirestore(app);
+        storage = getStorage(app);
+        googleProvider = new GoogleAuthProvider();
+        googleProvider.setCustomParameters({ prompt: "select_account" });
+        firebaseEnabled = true;
+
+        // Trigger listeners
+        readyCallbacks.forEach((cb) => {
+          try {
+            cb({ app, auth, db, storage });
+          } catch {}
+        });
+        readyCallbacks.length = 0;
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("firebase-initialized", {
+              detail: { app, auth, db, storage }
+            })
+          );
+        }
+
+        return true;
+      }
+    } catch (err) {
+      console.warn("Could not load Firebase configuration from proxy endpoint:", err.message);
+    } finally {
+      initPromise = null;
+    }
+
+    return false;
+  })();
+
+  return initPromise;
 }
 
 // Auto-trigger dynamic initialization in browser environment

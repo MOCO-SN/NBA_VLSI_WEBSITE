@@ -14,6 +14,38 @@ import {
   checkAdminFromFirestore
 } from "./utils/userDirectory";
 
+// Helper to resolve route from current window path/hash
+function resolveRouteFromPath() {
+  if (typeof window === "undefined") return "/";
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, "") || "/";
+  const hash = window.location.hash.toLowerCase().replace(/^#\/?/, "");
+
+  if (
+    path === "/app" ||
+    path.startsWith("/app/") ||
+    path === "/dashboard" ||
+    path.startsWith("/dashboard/") ||
+    path === "/admin" ||
+    hash === "app" ||
+    hash.startsWith("app/") ||
+    hash === "dashboard"
+  ) {
+    return "/app";
+  }
+
+  if (
+    path === "/login" ||
+    path.startsWith("/login/") ||
+    path === "/signin" ||
+    hash === "login" ||
+    hash === "signin"
+  ) {
+    return "/login";
+  }
+
+  return "/";
+}
+
 export default function App() {
   const [user, setUser] = useState(() => {
     const savedGuest = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("mocosn_demo_user") : null;
@@ -28,19 +60,11 @@ export default function App() {
   });
   const [loading, setLoading] = useState(() => {
     const hasGuest = typeof sessionStorage !== "undefined" && Boolean(sessionStorage.getItem("mocosn_demo_user"));
-    return !hasGuest && Boolean(firebaseEnabled && auth);
+    return !hasGuest;
   });
 
   // Route state: "/" (Landing), "/app" (Dashboard/Workspace), "/login"
-  const [currentRoute, setCurrentRoute] = useState(() => {
-    if (typeof window !== "undefined") {
-      const path = window.location.pathname.toLowerCase();
-      const hash = window.location.hash.toLowerCase();
-      if (path.startsWith("/app") || hash.startsWith("#/app")) return "/app";
-      if (path.startsWith("/login") || hash.startsWith("#/login")) return "/login";
-    }
-    return "/";
-  });
+  const [currentRoute, setCurrentRoute] = useState(resolveRouteFromPath);
 
   const navigateTo = (route) => {
     if (typeof window !== "undefined") {
@@ -49,7 +73,7 @@ export default function App() {
           window.history.pushState(null, "", route);
         }
       } catch {
-        window.location.hash = `#${route}`;
+        window.location.hash = `#${route.replace(/^\//, "")}`;
       }
     }
     setCurrentRoute(route);
@@ -57,15 +81,7 @@ export default function App() {
 
   useEffect(() => {
     const handleRouteSync = () => {
-      const path = window.location.pathname.toLowerCase();
-      const hash = window.location.hash.toLowerCase();
-      if (path.startsWith("/app") || hash.startsWith("#/app")) {
-        setCurrentRoute("/app");
-      } else if (path.startsWith("/login") || hash.startsWith("#/login")) {
-        setCurrentRoute("/login");
-      } else {
-        setCurrentRoute("/");
-      }
+      setCurrentRoute(resolveRouteFromPath());
     };
     window.addEventListener("popstate", handleRouteSync);
     window.addEventListener("hashchange", handleRouteSync);
@@ -150,7 +166,13 @@ export default function App() {
 
     window.addEventListener("firebase-initialized", handleInitialized);
 
+    // Safety fallback: ensure loading spinner is dismissed even if network or proxy is delayed
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 6000);
+
     return () => {
+      clearTimeout(safetyTimer);
       if (typeof unsubscribe === "function") unsubscribe();
       window.removeEventListener("firebase-initialized", handleInitialized);
     };
